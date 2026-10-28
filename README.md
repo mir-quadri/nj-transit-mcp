@@ -153,12 +153,18 @@ ChatGPT cannot use a local stdio server. It needs:
    Settings → Apps & Connectors → Create → enter
    `https://your-server/mcp` and the bearer token as its auth header.
 
-Public deployment status (2026-10-28, 09:34 ET): **prepared, not
-yet live**. Auth, Dockerfile, `railway.toml`, and the Vercel
-adapter are done and auth-tested locally. A public deploy still
-needs Mir's approval to (a) create a GitHub repo for this code and
-(b) deploy it on his Railway account (which may use his existing
-plan's resources).
+Public deployment status (2026-10-28, 13:25 ET): **LIVE on Vercel**.
+Public URL: https://nj-transit-mcp.vercel.app/mcp
+(`https://nj-transit-mcp.vercel.app/health` returns
+`{"status":"ok","server":"nj-transit"}`; `/mcp` requires
+`Authorization: Bearer <MCP_BEARER_TOKEN>` set in Vercel for
+Production and Preview). Source: https://github.com/mir-quadri/nj-transit-mcp
+(main, commit e90e203 at deploy time). Caveat: as of 13:25 ET, a real
+external MCP client (ChatGPT/Gemini) has not yet confirmed a tool call
+through the public URL — verification from this VM was blocked by its
+egress proxy for POST requests, and Vercel logs showed no POST /mcp
+reaching the function during that verification window. Test it from
+ChatGPT Developer Mode (below) and treat that as the definitive check.
 
 ## What is NOT in v1
 
