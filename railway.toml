@@ -1,0 +1,11 @@
+# Railway: deploy from this repo with the Dockerfile.
+# Set in Railway Variables (never commit them here):
+#   MCP_BEARER_TOKEN=<long random token, also entered in ChatGPT>
+#   NJT_USERNAME= / NJT_PASSWORD=   (optional, for live NJ delays)
+[build]
+builder = "dockerfile"
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "on-failure"
