@@ -1,4 +1,4 @@
-# NJ Transit + PATH MCP Server — v1
+# NJ Transit + PATH + NJ Transit bus MCP Server — v1.2
 
 A Model Context Protocol server that gives any MCP-compatible AI
 (Claude, Gemini CLI, ChatGPT, Cursor, VS Code, …) real NJ Transit
@@ -30,20 +30,22 @@ NJ↔NYC rapid-transit system. Both are in v1.
 
 ## Tools (6)
 
-- `search_stations(query, system="all")` — find station IDs.
-  `system`: `nj_transit`, `path`, `all`.
+- `search_stations(query, system="all")` — find station/stop IDs.
+  `system`: `nj_transit`, `nj_bus`, `path`, `all`.
 - `next_departures(station, limit=10, system="nj_transit", line?, towards?)`
   — next departures. `station` can be a name or stop ID. Ambiguous
-  names (e.g. "Secaucus" = Upper vs Lower Level) return candidates
-  instead of guessing.
-- `trip_between(origin, destination, limit=5)` — next same-trip
-  NJ Transit trains, with departure, arrival, duration.
-- `lines(system="all")` — all routes.
-- `service_alerts(system="all")` — NJ alerts when credentials are
-  set; otherwise an honest "not available" note (never invented).
-- `server_status()` — GTFS date range/counts, whether live NJ data
-  is on, PATH feed age. Ask this when you need to know if an
-  answer is live or scheduled.
+  names (e.g. "Secaucus" = Upper vs Lower Level, "PORT AUTHORITY
+  BUS TERMINAL" = 4 stop IDs) return candidates instead of guessing.
+  Use `system="nj_bus"` for bus (scheduled only in v1.2).
+- `trip_between(origin, destination, limit=5, system="nj_transit")` —
+  next same-trip NJ Transit trains/buses, with departure, arrival,
+  duration. Add `system="nj_bus"` for bus.
+- `lines(system="all")` — all routes (285 total: 17 rail + 263 bus + 5 PATH).
+- `service_alerts(system="all")` — NJ rail alerts when credentials are
+  set; bus and PATH alerts reported as not available, never invented.
+- `server_status()` — GTFS date range/counts for rail and bus,
+  whether live NJ data is on, PATH feed age. Ask this when you need
+  to know if an answer is live or scheduled.
 
 ## Verified test — 2026-10-28, ~09:16 ET
 
@@ -166,26 +168,48 @@ egress proxy for POST requests, and Vercel logs showed no POST /mcp
 reaching the function during that verification window. Test it from
 ChatGPT Developer Mode (below) and treat that as the definitive check.
 
-## What is NOT in v1
+## NJ Transit bus (v1.2, system='nj_bus')
 
-- **NJ Transit bus**: separate `bus_data` GTFS + BUSDATA API, not
-  verified in this build. Next provider to add.
-- **NYC Subway, SEPTA, Amtrak, ferries**: not in v1. The provider
+Same 6 tools, bus provider only. Source: official public GTFS
+https://www.njtransit.com/bus_data.zip — 263 routes, 16,563 stops,
+33,287 trips, 1,776,403 stop_times rows, service Oct 20 2026–Apr 17
+2027 (calendar_dates only, same quirk as rail: a trip runs iff its
+service_id is listed for that date). Use `system='nj_bus'` for
+`search_stations`, `next_departures`, `trip_between` (add
+`system='nj_bus'`), and `lines`. Bus stops are street stops, so
+ambiguous names (e.g. "PORT AUTHORITY BUS TERMINAL" = 4 stop IDs)
+return candidates instead of guessing — use a stop ID when in doubt.
+
+Honest limits: bus departures are **scheduled only** in v1.2.
+BUSDATA live delays/alerts are NOT enabled (separate API, not
+verified), so nothing bus is ever labelled live. Because stop_times
+is 1.7M rows, the server streams it per query instead of loading it
+into memory (shapes.txt is never read): a bus departure query takes
+~4–5 s locally, and the first bus query after a cold start takes
+~5 s to load metadata. Verified locally 2026-10-28 ~20:48 ET:
+Port Authority stop 3511 → 20:48 bus 119, 190, 320; Newark Penn bus
+stop 43283 → 21:28/22:28/23:28 bus 108 to New York; trip 108
+Clifton Ave at E 7th Ave → Pavillion Apartments Tower South
+21:15 → 21:18. Rail tools are unchanged (17 routes, 285 lines total
+across rail + bus + PATH).
+
+## What is NOT in v1.2
+
+- **NJ Transit bus live delays/alerts**: BUSDATA, not enabled.
+- **NYC Subway, SEPTA, Amtrak, ferries**: not in v1.2. The provider
   shape in `server.py` is designed so each is one new provider
   (GTFS + GTFS-Realtime URLs + station map), not a rewrite.
 - **Transfers / multi-leg trips**: `trip_between` is same-trip only.
 - **Fares, parking, accessibility**: not in the feeds used.
-- **Auth on HTTP**: add a bearer-token check before public deploy.
 
 ## Next steps (in order)
 
-1. Mir registers for NJ Transit developer credentials → live NJ
-   delays verified end-to-end (the one unverified piece above).
-2. Deploy the HTTP version — auth + Railway config DONE 2026-10-28;
-   public deploy pending Mir's approval for a GitHub repo + Railway
-   deploy (see ChatGPT section above).
-3. Add NJ Transit bus, then MTA Subway as provider #3, reusing the
-   same 6 tools.
+1. External ChatGPT test of the public `/mcp` endpoint (definitive
+   verification, see above).
+2. Mir registers for NJ Transit developer credentials → live NJ
+   rail delays verified end-to-end (the one unverified piece above),
+   and bus BUSDATA live if wanted.
+3. Add MTA Subway as provider #3, reusing the same 6 tools.
 
 ## Sources (checked 2026-10-28)
 
@@ -196,6 +220,8 @@ ChatGPT Developer Mode (below) and treat that as the definitive check.
   BUSDATA, RailData, GTFS-BUS, GTFS-RAIL catalog.
 - NJ Transit public GTFS: `https://www.njtransit.com/rail_data.zip`
   (also listed by Mobility Database, Sep 15 2026 – Mar 13 2027).
+- NJ Transit bus public GTFS: `https://www.njtransit.com/bus_data.zip`
+  (263 routes, 16,563 stops, Oct 20 2026 – Apr 17 2027, checked 2026-10-28).
 - PATH live GTFS-Realtime: `https://path.transitdata.nyc/gtfsrt`
   (community feed, ~5 s refresh; station IDs verified against the
   official PATH GTFS static feed).
