@@ -721,7 +721,7 @@ def _bus_departures(stop_id: str, after: datetime, limit: int,
 
 # ---------------------------------------------------------------- tools
 
-@mcp.tool
+@mcp.tool(title="Find NJ Transit, bus, and PATH stations", annotations={"title": "Find NJ Transit, bus, and PATH stations", "read_only_hint": True, "destructive_hint": False, "idempotent_hint": False, "open_world_hint": True})
 def search_stations(query: str, system: str = "all") -> dict:
     """Find stations/stops by name. system: 'nj_transit' (rail + light
     rail), 'nj_bus' (NJ Transit bus street stops), 'path', or 'all'.
@@ -750,7 +750,7 @@ def search_stations(query: str, system: str = "all") -> dict:
     return {"query": query, "stations": results[:30]}
 
 
-@mcp.tool
+@mcp.tool(title="Next departures from a station", annotations={"title": "Next departures from a station", "read_only_hint": True, "destructive_hint": False, "idempotent_hint": False, "open_world_hint": True})
 def next_departures(station: str, limit: int = 10, system: str = "nj_transit",
                     line: str | None = None, towards: str | None = None) -> dict:
     """Next departures from a station/stop (name or stop ID).
@@ -841,7 +841,7 @@ def next_departures(station: str, limit: int = 10, system: str = "nj_transit",
     }
 
 
-@mcp.tool
+@mcp.tool(title="Next same-trip trains or buses between two stations", annotations={"title": "Next same-trip trains or buses between two stations", "read_only_hint": True, "destructive_hint": False, "idempotent_hint": False, "open_world_hint": True})
 def trip_between(origin: str, destination: str, limit: int = 5,
                  system: str = "nj_transit") -> dict:
     """Next NJ Transit trains/buses from origin to destination on the
@@ -959,7 +959,7 @@ def trip_between(origin: str, destination: str, limit: int = 5,
     }
 
 
-@mcp.tool
+@mcp.tool(title="List all routes", annotations={"title": "List all routes", "read_only_hint": True, "destructive_hint": False, "idempotent_hint": False, "open_world_hint": True})
 def lines(system: str = "all") -> dict:
     """All lines/routes. NJ Transit: 17 rail + light-rail routes.
     NJ bus: 263 routes (short_name is the bus number; long names are
@@ -994,7 +994,7 @@ def lines(system: str = "all") -> dict:
     return {"lines": out}
 
 
-@mcp.tool
+@mcp.tool(title="Service alerts", annotations={"title": "Service alerts", "read_only_hint": True, "destructive_hint": False, "idempotent_hint": False, "open_world_hint": True})
 def service_alerts(system: str = "all") -> dict:
     """Service alerts. NJ Transit alerts require NJT credentials (see
     server_status for how to enable); PATH has no separate alerts feed
@@ -1013,7 +1013,7 @@ def service_alerts(system: str = "all") -> dict:
     return {"alerts": alerts, "notes": notes}
 
 
-@mcp.tool
+@mcp.tool(title="Server status and data freshness", annotations={"title": "Server status and data freshness", "read_only_hint": True, "destructive_hint": False, "idempotent_hint": False, "open_world_hint": True})
 def server_status() -> dict:
     """What data this server is actually serving right now: GTFS date
     range and counts, whether live NJ data is enabled, PATH feed age.
@@ -1046,7 +1046,7 @@ def server_status() -> dict:
         bus_info = {"error": str(e)}
     return {
         "server": "nj-transit",
-        "version": "1.2",
+        "version": "1.3",
         "http_auth_required": bool(os.environ.get("MCP_BEARER_TOKEN")),
         "public_note": (
             "Private token-protected deployment."
