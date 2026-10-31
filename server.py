@@ -1047,6 +1047,13 @@ def server_status() -> dict:
     return {
         "server": "nj-transit",
         "version": "1.2",
+        "http_auth_required": bool(os.environ.get("MCP_BEARER_TOKEN")),
+        "public_note": (
+            "Private token-protected deployment."
+            if os.environ.get("MCP_BEARER_TOKEN")
+            else "No bearer token set: /mcp is open (read-only tools only) "
+                 "and rate-limited per IP — this is the public mode."
+        ),
         "timezone": "America/New_York",
         "now": datetime.now(ET).strftime("%Y-%m-%d %H:%M %Z"),
         "nj_transit_gtfs": gtfs_info,
@@ -1073,10 +1080,87 @@ def server_status() -> dict:
 
 
 # ------------------------------------------------------------ HTTP auth
+# Private deployment: when MCP_BEARER_TOKEN is set, /mcp requires
+# `Authorization: Bearer <token>`. Public deployment (route 1, chosen
+# 2026-10-30): the token is NOT set, /mcp is open, and the rate limiter
+# below is the abuse control — all 6 tools are read-only, so there is
+# nothing to write, delete, or spend through the API. /health is always
+# public and unauthenticated. Note the serverless caveat: on Vercel
+# each function instance keeps its own in-memory counters, so the
+# per-IP limit is per-instance, not global — it blunts a hammering
+# client, it does not replace a global gateway if traffic grows.
+
+class RateLimitMiddleware:
+    """Per-IP sliding-window limiter for /mcp only (not /health).
+
+    Default 60 requests / 60 s per IP, overridable with
+    MCP_RATE_LIMIT_PER_MINUTE. Returns 429 with a Retry-After header
+    instead of running the tool call. Scheduled data is cached
+    in-memory (rail) or re-scanned per query (bus, ~4-5 s), so this
+    mainly protects the expensive bus scan and the PATH feed fetch
+    from a single abusive client.
+    """
+
+    def __init__(self, app, per_minute: int | None = None):
+        self.app = app
+        try:
+            self.per_minute = int(
+                per_minute or os.environ.get("MCP_RATE_LIMIT_PER_MINUTE", "60")
+            )
+        except ValueError:
+            self.per_minute = 60
+        self._hits: dict[str, list[float]] = {}
+        self._lock = threading.Lock()
+
+    def _client_ip(self, scope) -> str:
+        headers = {
+            k.decode("latin-1").lower(): v.decode("latin-1")
+            for k, v in scope.get("headers", [])
+        }
+        forwarded = headers.get("x-forwarded-for", "")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
+        client = scope.get("client")
+        return client[0] if client else "unknown"
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") != "http" or not scope.get("path", "").startswith("/mcp"):
+            await self.app(scope, receive, send)
+            return
+        now = time.time()
+        ip = self._client_ip(scope)
+        with self._lock:
+            hits = [t for t in self._hits.get(ip, []) if now - t < 60]
+            if len(hits) >= self.per_minute:
+                retry_after = max(1, int(60 - (now - hits[0])))
+                self._hits[ip] = hits
+                exceeded = True
+            else:
+                hits.append(now)
+                self._hits[ip] = hits
+                exceeded = False
+        if exceeded:
+            body = b'{"error":"rate_limited","retry_after_seconds":%d}' % retry_after
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 429,
+                    "headers": [
+                        (b"content-type", b"application/json"),
+                        (b"retry-after", str(retry_after).encode()),
+                    ],
+                }
+            )
+            await send({"type": "http.response.body", "body": body})
+            return
+        await self.app(scope, receive, send)
+
+
 # Public MCP endpoints must not be open to anyone: when
 # MCP_BEARER_TOKEN is set, /mcp requires `Authorization: Bearer <token>`.
 # When it is unset (local stdio / local testing), HTTP is unauthenticated
-# — do NOT expose that publicly. /health is always public and unauthenticated.
+# — do NOT expose that publicly without the rate limiter above.
+# /health is always public and unauthenticated.
 
 class BearerAuthMiddleware:
     """Pure ASGI middleware, so it works under uvicorn and under Vercel."""
@@ -1101,7 +1185,11 @@ class BearerAuthMiddleware:
             )
             await send({"type": "http.response.body", "body": body})
             return
-        if path.startswith("/mcp"):
+        if path.startswith("/mcp") or path in ("/api/index.py", "/api/index"):
+            # /api/index.py is the Vercel rewrite target for /mcp;
+            # api/index.py normally rewrites it back to /mcp first,
+            # but treat it as the MCP path here too, so a rewritten
+            # request can never slip past auth into a 404.
             headers = {
                 k.decode("latin-1").lower(): v.decode("latin-1")
                 for k, v in scope.get("headers", [])
@@ -1130,7 +1218,10 @@ def build_http_app():
     return mcp.http_app(
         path="/mcp",
         stateless_http=True,
-        middleware=[Middleware(BearerAuthMiddleware)],
+        middleware=[
+            Middleware(RateLimitMiddleware),
+            Middleware(BearerAuthMiddleware),
+        ],
     )
 
 

@@ -1,9 +1,19 @@
-# Vercel serverless adapter (alternative to Railway).
+# Vercel serverless adapter.
 # Vercel serves this file at /api/index.py; the MCP endpoint itself is
-# at /mcp via the app returned here, mounted by vercel.json rewrites.
+# at /mcp via vercel.json rewrites.
 # Requires: MCP_BEARER_TOKEN set in Vercel env vars.
 # Vercel's filesystem is read-only except /tmp, so GTFS is cached there
 # (re-downloaded on cold starts; ~6 MB, parsed in seconds).
+#
+# BUG FOUND 2026-10-31 (simulation test, not a ChatGPT client):
+# Vercel rewrites /mcp -> /api/index.py, so the ASGI scope path the
+# app sees is /api/index.py, NOT /mcp. FastMCP's http_app is mounted
+# at /mcp, so it answered 404 to the rewritten request, and the
+# bearer middleware (which only checked paths starting with /mcp)
+# never ran — a no-token POST /mcp got "Not Found" after ~15 s
+# instead of 401. The wrapper below restores /mcp before the inner
+# app (including its auth middleware) sees the request. Without it,
+# a ChatGPT connector pointed at .../mcp would fail the same way.
 import os
 import sys
 from pathlib import Path
@@ -13,4 +23,22 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from server import build_http_app  # noqa: E402
 
-app = build_http_app()
+_inner_app = build_http_app()
+
+
+class VercelPathFix:
+    """Restore the public /mcp path after Vercel's rewrite."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") == "http" and scope.get("path") in (
+            "/api/index.py",
+            "/api/index",
+        ):
+            scope = {**scope, "path": "/mcp", "raw_path": b"/mcp"}
+        await self.app(scope, receive, send)
+
+
+app = VercelPathFix(_inner_app)
