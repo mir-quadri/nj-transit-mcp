@@ -1,4 +1,4 @@
-# NJ Transit + PATH + NJ Transit bus MCP Server — v1.2
+# NJ Transit + PATH + NJ Transit bus MCP Server — v1.3
 
 A Model Context Protocol server that gives any MCP-compatible AI
 (Claude, Gemini CLI, ChatGPT, Cursor, VS Code, …) real NJ Transit
@@ -36,7 +36,7 @@ NJ↔NYC rapid-transit system. Both are in v1.
   — next departures. `station` can be a name or stop ID. Ambiguous
   names (e.g. "Secaucus" = Upper vs Lower Level, "PORT AUTHORITY
   BUS TERMINAL" = 4 stop IDs) return candidates instead of guessing.
-  Use `system="nj_bus"` for bus (scheduled only in v1.2).
+  Use `system="nj_bus"` for bus (scheduled only in v1.3).
 - `trip_between(origin, destination, limit=5, system="nj_transit")` —
   next same-trip NJ Transit trains/buses, with departure, arrival,
   duration. Add `system="nj_bus"` for bus.
@@ -139,34 +139,26 @@ under `mcpServers` (or the client's equivalent MCP settings).
 
 ### ChatGPT
 
-ChatGPT cannot use a local stdio server. It needs:
+ChatGPT cannot use a local stdio server. It needs a public HTTPS
+URL with Streamable HTTP. This server is now free and public, no
+auth required:
 
-1. This server deployed at a public HTTPS URL with Streamable HTTP
-   (`--transport http`), with auth: set `MCP_BEARER_TOKEN` in the
-   host's env vars. `/mcp` then requires
-   `Authorization: Bearer <that token>` (verified 2026-10-28:
-   401 without/wrong token, 200 with it; `/health` stays public).
-   Recommended host: **Railway** (long-lived service, `Dockerfile`
-   + `railway.toml` included; set `PORT` automatically, plus
-   `MCP_BEARER_TOKEN` and optionally `NJT_USERNAME`/`NJT_PASSWORD`).
-   Alternative, untested on Vercel's function limits: **Vercel**
-   serverless (`api/index.py` + `vercel.json`, stateless HTTP).
-2. ChatGPT Developer Mode (Pro / Team / Enterprise / Edu):
-   Settings → Apps & Connectors → Create → enter
-   `https://your-server/mcp` and the bearer token as its auth header.
+- Public URL: https://nj-transit-mcp.vercel.app/mcp
+- ChatGPT Developer Mode (Pro / Team / Enterprise / Edu):
+  Settings → Apps & Connectors → Create → enter
+  `https://nj-transit-mcp.vercel.app/mcp`, Authentication: None.
 
-Public deployment status (2026-10-28, 13:25 ET): **LIVE on Vercel**.
-Public URL: https://nj-transit-mcp.vercel.app/mcp
-(`https://nj-transit-mcp.vercel.app/health` returns
-`{"status":"ok","server":"nj-transit"}`; `/mcp` requires
-`Authorization: Bearer <MCP_BEARER_TOKEN>` set in Vercel for
-Production and Preview). Source: https://github.com/mir-quadri/nj-transit-mcp
-(main, commit e90e203 at deploy time). Caveat: as of 13:25 ET, a real
-external MCP client (ChatGPT/Gemini) has not yet confirmed a tool call
-through the public URL — verification from this VM was blocked by its
-egress proxy for POST requests, and Vercel logs showed no POST /mcp
-reaching the function during that verification window. Test it from
-ChatGPT Developer Mode (below) and treat that as the definitive check.
+Public deployment status (2026-10-31, 17:35 ET): **LIVE and FREE
+on Vercel** — the bearer token was removed, the production
+deployment (main, commit af9e8a6, Public submission pack v1.3)
+redeployed Ready, and POST `/mcp` with no Authorization header
+was verified returning a 200 MCP initialize response.
+Source: https://github.com/mir-quadri/nj-transit-mcp (public).
+Official MCP Registry: `io.github.mir-quadri/nj-transit-mcp`
+v1.3.0, status active (published 2026-11-01).
+Note: in free mode there is no `/health` route — GET `/` and
+GET `/health` return 404; GET `/mcp` returns 405 (POST only).
+Rate limit: 60 requests/minute per IP per instance.
 
 ## NJ Transit bus (v1.2, system='nj_bus')
 
@@ -193,7 +185,7 @@ Clifton Ave at E 7th Ave → Pavillion Apartments Tower South
 21:15 → 21:18. Rail tools are unchanged (17 routes, 285 lines total
 across rail + bus + PATH).
 
-## What is NOT in v1.2
+## What is NOT in v1.3
 
 - **NJ Transit bus live delays/alerts**: BUSDATA, not enabled.
 - **NYC Subway, SEPTA, Amtrak, ferries**: not in v1.2. The provider
