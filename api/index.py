@@ -33,19 +33,20 @@ class VercelPathFix:
         self.app = app
 
     async def __call__(self, scope, receive, send):
-        if scope.get("type") == "http" and scope.get("path") in (
-            "/api/index.py",
-            "/api/index",
-        ):
-            scope = {**scope, "path": "/mcp", "raw_path": b"/mcp"}
-        if scope.get("type") == "http" and scope.get("path") == (
-            "/.well-known/openai-apps-challenge"
+        if scope.get("type") == "http" and (
+            scope.get("path") == "/.well-known/openai-apps-challenge"
+            or b"challenge=openai" in scope.get("query_string", b"")
         ):
             # OpenAI domain-verification challenge, issued in the
             # Plugins portal for the nj-transit-mcp draft (PRIVILEGE
             # SOLUTIONS org). This token is public by design: OpenAI
             # requires it served as plain text at this exact URL.
             # It is not an auth credential and grants no access.
+            # NOTE: Vercel rewrites both /mcp and the challenge URL to
+            # /api/index.py, so the rewritten scope path alone cannot
+            # tell them apart — the challenge rewrite therefore carries
+            # ?challenge=openai (see vercel.json), which is checked
+            # here BEFORE the /mcp path fix below.
             body = b"T8JqPc28gYKlkbKn9GtdqbCyT24t7PenqSVdAFc7Rns"
             await send(
                 {
@@ -58,6 +59,11 @@ class VercelPathFix:
                 {"type": "http.response.body", "body": body, "more_body": False}
             )
             return
+        if scope.get("type") == "http" and scope.get("path") in (
+            "/api/index.py",
+            "/api/index",
+        ):
+            scope = {**scope, "path": "/mcp", "raw_path": b"/mcp"}
         await self.app(scope, receive, send)
 
 
