@@ -38,6 +38,26 @@ class VercelPathFix:
             "/api/index",
         ):
             scope = {**scope, "path": "/mcp", "raw_path": b"/mcp"}
+        if scope.get("type") == "http" and scope.get("path") == (
+            "/.well-known/openai-apps-challenge"
+        ):
+            # OpenAI domain-verification challenge, issued in the
+            # Plugins portal for the nj-transit-mcp draft (PRIVILEGE
+            # SOLUTIONS org). This token is public by design: OpenAI
+            # requires it served as plain text at this exact URL.
+            # It is not an auth credential and grants no access.
+            body = b"T8JqPc28gYKlkbKn9GtdqbCyT24t7PenqSVdAFc7Rns"
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 200,
+                    "headers": [(b"content-type", b"text/plain")],
+                }
+            )
+            await send(
+                {"type": "http.response.body", "body": body, "more_body": False}
+            )
+            return
         await self.app(scope, receive, send)
 
 
